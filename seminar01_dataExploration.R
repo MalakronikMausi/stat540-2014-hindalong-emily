@@ -39,6 +39,7 @@ table(prDat$gType)
 table(prDat$devStage,prDat$gType)
 
 # If you had to take a wild guess, what do you think the intended experimental design was? What actually happened in real life?
+# The effect of a knockout mutation on the expression of three genes
 
 # For each quantitative variable, what are the extremes? How about average or median?
 summary(prDat)
