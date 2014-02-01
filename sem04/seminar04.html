@@ -183,12 +183,12 @@ hljs.initHighlightingOnLoad();
 
 <h3>seminar04.R</h3>
 
-<p>tunk &mdash; <em>Feb 1, 2014, 12:58 AM</em></p>
+<p>tunk &mdash; <em>Feb 1, 2014, 1:07 AM</em></p>
 
 <pre><code class="r"># Read in data and design file
 library(lattice)
-prDes &lt;- read.table(&quot;GSE4051_design.tsv&quot;, header = TRUE, as.is = 1)
-prDat &lt;- read.table(&quot;GSE4051_data.tsv&quot;)
+prDes &lt;- read.table(&quot;../GSE4051_design.tsv&quot;, header = TRUE, as.is = 1)
+prDat &lt;- read.table(&quot;../GSE4051_data.tsv&quot;)
 
 # Select a gene at random and bind with design info
 set.seed(987)
@@ -276,7 +276,7 @@ wilcoxRes$statistic
 <pre><code class="r">
 # Read in mini data
 library(plyr)
-kDat &lt;- read.table(&quot;GSE4051_MINI.txt&quot;,header=TRUE,row.names=1)
+kDat &lt;- read.table(&quot;../GSE4051_MINI.txt&quot;,header=TRUE,row.names=1)
 
 # Aggregate
 aggregate(eggBomb ~ gType * devStage, kDat, FUN = range)
@@ -532,7 +532,7 @@ ttRes
 </code></pre>
 
 <pre><code class="r">
-# Plot the relationship - ks seems bit off from the others, I wonder why
+# Plot the relationship - ks seems bit off from the others, I guess because it is sensitive to the shape of the distribution?
 xyplot(pVal_wilcox + pVal_ks ~ pVal_t,ttRes,outer=TRUE)
 </code></pre>
 

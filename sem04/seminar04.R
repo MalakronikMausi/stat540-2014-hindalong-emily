@@ -1,7 +1,7 @@
 # Read in data and design file
 library(lattice)
-prDes <- read.table("GSE4051_design.tsv", header = TRUE, as.is = 1)
-prDat <- read.table("GSE4051_data.tsv")
+prDes <- read.table("../GSE4051_design.tsv", header = TRUE, as.is = 1)
+prDat <- read.table("../GSE4051_data.tsv")
 
 # Select a gene at random and bind with design info
 set.seed(987)
@@ -34,7 +34,7 @@ wilcoxRes$p.value
 
 # Read in mini data
 library(plyr)
-kDat <- read.table("GSE4051_MINI.txt",header=TRUE,row.names=1)
+kDat <- read.table("../GSE4051_MINI.txt",header=TRUE,row.names=1)
 
 # Aggregate
 aggregate(eggBomb ~ gType * devStage, kDat, FUN = range)
@@ -72,7 +72,7 @@ ttRes <- ddply(subDat, ~ gene, function(z) {
 })
 ttRes
 
-# Plot the relationship - ks seems bit off from the others, I wonder why
+# Plot the relationship - ks seems bit off from the others, I guess because it is sensitive to the shape of the distribution?
 xyplot(pVal_wilcox + pVal_ks ~ pVal_t,ttRes,outer=TRUE)
 xyplot(pVal_ks ~ pVal_wilcox,ttRes)
 
