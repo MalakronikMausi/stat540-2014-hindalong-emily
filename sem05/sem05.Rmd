@@ -1,0 +1,151 @@
+Seminar 5
+========================================================
+
+### Libraries
+
+```{r}
+library(lattice)
+library(car)
+```
+
+### Reusable functions
+
+```{r}
+prepareData <- function(x) {
+  pDatDes <- cbind(t(prDat[x,]),prDes)
+  pDat <- with(pDatDes,data.frame(sidChar, sidNum, 
+                  devStage = factor(devStage,levels=as.character(unique(devStage))),
+                  gType = factor(gType,levels=as.character(unique(gType))),
+                  gExp = c(unlist(pDatDes[,grepl(".*at",colnames(pDatDes))])),
+                  gene = factor(rep(grep(".*at",colnames(pDatDes),value=TRUE), each = nrow(pDatDes))),stringsAsFactors=FALSE))
+  row.names(pDat) <- seq(1:nrow(pDat))
+  pDat
+}
+```
+
+```{r}
+makeStripplot <- function(data, group = data$gType, type = c('p','a')) {
+  stripplot(gExp ~ devStage | gene, data,
+          group = group, jitter.data = TRUE,
+          auto.key = TRUE, type = type, grid = TRUE)
+}
+```
+
+### Warm-up exercises
+
+Load the data as usual
+```{r}
+prDes <- read.table("../GSE4051_design.tsv", header = TRUE, as.is = TRUE)
+prDat <- read.table("../GSE4051_data.tsv")
+```
+
+Prepare and plot data for probeset "1456341_a_at"
+```{r}
+testDat <- prepareData("1456341_a_at")
+str(testDat)
+makeStripplot(testDat)
+```
+
+Conduct t-test for probeset "1456341_a_at" at developmental stage P2 vs. 4 weeks post-natal
+```{r}
+t.test(x=subset(testDat,devStage=="P2",select=c("gExp")),y=subset(testDat,devStage=="4_weeks",select=c("gExp")))
+```
+
+Linear model for one categorical covariate (probeset "1438786_a_at")
+```{r}
+testDat2 <- prepareData("1438786_a_at")
+makeStripplot(testDat2)
+mfit <- lm(formula = gExp ~ devStage, data = testDat2, subset = gType == "wt")
+```
+
+Use this model to compare P2 and P10
+```{r}
+contMat <- c(0,1,0,-1,0)
+diff <- contMat %*% coef(mfit)
+estSe <- t(contMat) %*% vcov(mfit) %*% contMat
+testStat <- diff/estSe
+2 * pt(abs(testStat), df = df.residual(mfit), lower.tail = FALSE)
+```
+
+Two categorical covariates: devStage and gType (probeset "1448690_at")
+```{r}
+makeStripplot(oDat <- prepareData("1448690_at"))
+oFitBig <- lm(formula = gExp ~ devStage * gType, data = oDat)
+summary(oFitBig)$coef
+oFitSmall <- lm(formula = gExp ~ devStage + gType, data = oDat)
+summary(oFitSmall)$coef
+anova(oFitSmall,oFitBig)
+```
+
+Repeating the above for probeset 1429225_at
+```{r}
+makeStripplot(oDat <- prepareData("1429225_at"))
+oFitBig <- lm(formula = gExp ~ devStage * gType, data = oDat)
+summary(oFitBig)$coef
+oFitSmall <- lm(formula = gExp ~ devStage + gType, data = oDat)
+summary(oFitSmall)$coef
+anova(oFitSmall,oFitBig)
+```
+
+### Take home exercise 1
+
+Now, let's do this for lots of genes
+```{r}
+set.seed(340)
+samp <- sample(1:nrow(prDat), size = 9, replace = FALSE)
+luckyGenes <- rownames(prDat)[samp]
+nineGeneDat <- prepareData(luckyGenes)
+makeStripplot(nineGeneDat)
+```
+
+1428334_at looks interesting - could there be an interaction? Let's do some tests...
+```{r}
+oFitBig <- with(nineGeneDat,by(nineGeneDat, gene, function(x) lm(formula = gExp ~ devStage * gType, data = x)))
+oFitSmall <- with(nineGeneDat,by(nineGeneDat, gene, function(x) lm(formula = gExp ~ devStage + gType, data = x)))
+coefsBig <- lapply(oFitBig, function(x) summary(x)$coef)
+coefsSmall <- lapply(oFitSmall, function(x) summary(x)$coef)
+nums <- seq(1:9)
+lapply(nums, function(x) anova(oFitSmall[[x]],oFitBig[[x]]))
+```
+
+Seems that 3 and 8 (1423641_s_at and 1448504_a_at) have the most evidence for an interaction effect. Not what I would have expected from looking at the plots.
+
+### Take home exercise 2
+
+Let's keep working with our set of nine genes. Let's transform the devStage column into a numeric type column called age.
+```{r}
+nineGeneDat$age <- recode(nineGeneDat$devStage, "'E16'=-2; 'P2'=2; 'P6'=6; 'P10'=10; '4_weeks'=28",as.factor.result = FALSE)
+oFitAge <- with(nineGeneDat,by(nineGeneDat, gene, function(x) lm(formula = gExp ~ age, data = x)))
+oFitAgeQuad <- with(nineGeneDat,by(nineGeneDat, gene, function(x) lm(formula = gExp ~ age + I(age^2), data = x)))
+coefsAge <- lapply(oFitAge, function(x) summary(x)$coef)
+coefsQuad <- lapply(oFitAgeQuad, function(x) summary(x)$coef)
+lapply(nums, function(x) anova(oFitAge[[x]],oFitAgeQuad[[x]]))
+```
+
+Looks like the quadratic term might be improving the model significantly in case 3, and maybe 1 and 2 depending one what threshold you set. This seems a bit strange given the plot:
+```{r}
+makeStripplot(nineGeneDat,group=NULL)
+```
+
+
+### Take home exercise 3
+
+Now let's try this again after removing 4 weeks.
+```{r}
+nineGeneDatFilt <- nineGeneDat[nineGeneDat$devStage != "4_weeks",]
+oFitAgeFilt <- with(nineGeneDatFilt,by(nineGeneDatFilt, gene, function(x) lm(formula = gExp ~ age, data = x)))
+oFitAgeQuadFilt <- with(nineGeneDatFilt,by(nineGeneDatFilt, gene, function(x) lm(formula = gExp ~ age + I(age^2), data = x)))
+coefsAgeFilt <- lapply(oFitAgeFilt, function(x) summary(x)$coef)
+coefsQuadFilt <- lapply(oFitAgeQuadFilt, function(x) summary(x)$coef)
+lapply(nums, function(x) anova(oFitAgeFilt[[x]],oFitAgeQuadFilt[[x]]))
+```
+
+Now the quadratic model looks promising for a few more of the genes.
+
+### Take home exercise 4
+
+Now let's add regression lines to the strip plots.
+```{r}
+makeStripplot(nineGeneDat,NULL,c('p','r'))
+```
+
