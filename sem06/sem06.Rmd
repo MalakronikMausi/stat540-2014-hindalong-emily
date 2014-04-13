@@ -1,0 +1,83 @@
+Seminar 6
+========================================================
+
+### Libraries
+
+```{r}
+library(lattice)
+library(limma)
+```
+
+### Reusable functions
+
+```{r}
+prepareData <- function(x) {
+  pDatDes <- cbind(t(prDat[x,]),prDes)
+  pDat <- with(pDatDes,data.frame(sidChar, sidNum, 
+                  devStage = factor(devStage,levels=as.character(unique(devStage))),
+                  gType = factor(gType,levels=as.character(unique(gType))),
+                  gExp = c(unlist(pDatDes[,grepl(".*at",colnames(pDatDes))])),
+                  gene = factor(rep(grep(".*at",colnames(pDatDes),value=TRUE), each = nrow(pDatDes))),stringsAsFactors=FALSE))
+  row.names(pDat) <- seq(1:nrow(pDat))
+  pDat
+}
+```
+
+```{r}
+makeStripplot <- function(data, group = data$gType, type = c('p','a')) {
+  stripplot(gExp ~ devStage | gene, data,
+          group = group, jitter.data = TRUE,
+          auto.key = TRUE, type = type, grid = TRUE)
+}
+```
+
+### Warm-up exercises
+
+Load the data as usual
+```{r}
+prDes <- read.table("../GSE4051_design.tsv", header = TRUE, as.is = TRUE)
+prDat <- read.table("../GSE4051_data.tsv")
+```
+
+Fit a linear model to the wildtype data
+```{r}
+wtDes <- subset(prDes,gType=="wt")
+wtDat <- subset(prDat,select=prDes$gType=="wt")
+wtDesMat <- model.matrix(~devStage,wtDes)
+wtFit <- lmFit(wtDat,wtDesMat)
+wtEbFit <- eBayes(wtFit)
+```
+
+Find differentially expressed genes
+```{r}
+topTable(wtEbFit)
+dsHits <- topTable(wtEbFit, coef = grep("devStage", colnames(coef(wtEbFit))))
+```
+
+Make plots for three of these hits
+```{r}
+pDat <- prepareData(c("1451617_at","1425222_x_at","1422929_s_at"))
+wtpDat <- subset(pDat,gType=="wt")
+makeStripplot(wtpDat,group=NULL)
+```
+
+This seems to support the hypothesis that devstage has an effect on its own.
+
+Compare to lm
+```{r}
+wtFitlm <- lm(gExp ~ devStage, wtpDat)
+```
+
+Not seeing much that's comparable here. Come back to...
+
+topTable exercises...
+```{r}
+BHtab <- topTable(wtEbFit,coef = grep("devStage", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes),adjust.method="BH",p.value = 1e-05)
+nrow(BHtab)
+BHtab[63,c("ID","F","adj.P.Val","devStageP6")]
+
+P2tab <- topTable(wtEbFit,coef = grep("devStageP2", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes))
+P10tab <- topTable(wtEbFit,coef = grep("devStageP10", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes))
+xyplot(P2tab$t ~ P10tab$t,panel=panel.smoothScatter)             
+```
+
