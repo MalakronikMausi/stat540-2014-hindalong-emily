@@ -31,15 +31,26 @@ makeStripplot <- function(data, group = data$gType, type = c('p','a')) {
 }
 ```
 
-### Warm-up exercises
-
-Load the data as usual
+Stolen from Sohrab...
 ```{r}
-prDes <- read.table("../GSE4051_design.tsv", header = TRUE, as.is = TRUE)
+niceScatter <- function(x.var, y.var, x.label, y.label) {
+    lims <- c(-20, 15)
+    xyplot(y.var ~ x.var, asp = 1, panel = function(x, y, ...) {
+        panel.smoothScatter(x, y, ...)
+        panel.abline(0, 1, col = "orange")
+    }, nbin = 150, ylim = lims, xlim = lims, xlab = x.label, ylab = y.label)
+}
+```
+
+### Fit a linear model
+
+Load the data as usual.
+```{r}
+prDes <- readRDS("../GSE4051_design.rds")
 prDat <- read.table("../GSE4051_data.tsv")
 ```
 
-Fit a linear model to the wildtype data
+Fit a linear model to the wildtype data.
 ```{r}
 wtDes <- subset(prDes,gType=="wt")
 wtDat <- subset(prDat,select=prDes$gType=="wt")
@@ -48,36 +59,184 @@ wtFit <- lmFit(wtDat,wtDesMat)
 wtEbFit <- eBayes(wtFit)
 ```
 
-Find differentially expressed genes
+Find differentially expressed genes.
 ```{r}
 topTable(wtEbFit)
 dsHits <- topTable(wtEbFit, coef = grep("devStage", colnames(coef(wtEbFit))))
 ```
 
-Make plots for three of these hits
+Make plots for three of these hits.
 ```{r}
 pDat <- prepareData(c("1451617_at","1425222_x_at","1422929_s_at"))
 wtpDat <- subset(pDat,gType=="wt")
 makeStripplot(wtpDat,group=NULL)
 ```
+These plots highlight the differential expression of these genes across dev stages.
 
 This seems to support the hypothesis that devstage has an effect on its own.
 
-Compare to lm
+Compare to lm.
 ```{r}
-wtFitlm <- lm(gExp ~ devStage, wtpDat)
+# Get lm results for 1451617_at
+wtFitlm <- lm(gExp ~ devStage, wtpDat[1:35,])
+
+summary(wtFitlm)$coef
+dsHits["1451617_at",]
 ```
 
-Not seeing much that's comparable here. Come back to...
+It's hard to compare these two because lm assigns a p-value to each coef whereas limma assigns a p-value to the probe across all values of devstage. However, they seem to be in the same ballpark.
 
-topTable exercises...
+### topTable exercises
+
+How many probes have Benjamini-Hochberg ("BH") adjusted p-values for the F test conducted above that are less than 1e-05?
 ```{r}
-BHtab <- topTable(wtEbFit,coef = grep("devStage", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes),adjust.method="BH",p.value = 1e-05)
+BHtab <- topTable(wtEbFit,coef = grep("devStage", colnames(coef(wtEbFit))),number=Inf,adjust.method="BH",p.value = 1e-05)
 nrow(BHtab)
-BHtab[63,c("ID","F","adj.P.Val","devStageP6")]
-
-P2tab <- topTable(wtEbFit,coef = grep("devStageP2", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes))
-P10tab <- topTable(wtEbFit,coef = grep("devStageP10", colnames(coef(wtEbFit))),number=nrow(wtEbFit$genes))
-xyplot(P2tab$t ~ P10tab$t,panel=panel.smoothScatter)             
 ```
 
+What is the 63rd hit on this list?
+```{r}
+BHtab[63,c("F","adj.P.Val","devStageP6")]
+```
+
+Scatterplot the t statistics for the test that the P2 effect is zero against that for P10.
+```{r}
+P2tab <- topTable(wtEbFit,coef = grep("devStageP2", colnames(coef(wtEbFit))),number=Inf,sort.by="none")
+P10tab <- topTable(wtEbFit,coef = grep("devStageP10", colnames(coef(wtEbFit))),number=Inf,sort.by="none")
+niceScatter(P2tab$t,P10tab$t,"P2 t-stat","P10 t-stat")
+```
+
+Create a densityplot of the associated adjusted p-values.
+```{r}
+densityplot(~ P2tab$adj.P.Val + P10tab$adj.P.Val,auto.key=TRUE)
+```
+
+If you require a BH adjusted p-value less than 1e-03, how many hits do you get for P2? How many for P10? How much overlap is there?
+```{r}
+addmargins(table(P2tab$adj.P.Val < 1e-03, P10tab$adj.P.Val < 1e-03, dnn = c("P2", "P10")))
+```
+
+Now just focus on the P10 effect. Create a scatterplot matrix of raw p-values, BH adjusted p-values, and BY p-values.
+```{r}
+P10tab_BY <- topTable(wtEbFit,coef = grep("devStageP10", colnames(coef(wtEbFit))),number=Inf,adjust.method="BY",sort="none")
+splomDat <- data.frame(raw=P10tab$P.Value,BH=P10tab$adj.P.Val,BY=P10tab_BY$adj.P.Val)
+splom(splomDat)
+```
+The BH values are almost linearly related to the raw values, although they ascend somewhat faster.
+
+### Perform inference for some contrasts.
+
+Set up contrasts.
+```{r}
+cont.matrix <- makeContrasts(P10VsP6 = devStageP10 - devStageP6, fourweeksVsP10 = devStage4_weeks - devStageP10, levels = wtDesMat)
+wtFitCont <- contrasts.fit(wtFit, cont.matrix)
+wtEbFitCont <- eBayes(wtFitCont)
+contTab <- topTable(wtEbFitCont)
+contTab
+```
+
+Plot the data from the top 4 hits.
+```{r}
+pDat <- prepareData(rownames(contTab)[1:4])
+wtpDat <- subset(pDat,gType=="wt")
+makeStripplot(wtpDat,group=NULL)
+```
+
+Let's use decideTests() to adjust the p-values for both contrasts globally, i.e. all together and then threshhold them at a cutoff of 1e-04.
+```{r}
+cutoff <- 1e-04
+wtResCont <- decideTests(wtEbFitCont, p.value = cutoff, method = "global")
+summary(wtResCont)
+```
+
+Let's try to pull out various hits and plot their data.
+```{r}
+hits1 <- rownames(prDat)[which(wtResCont[, "P10VsP6"] < 0)]
+hits2 <- rownames(prDat)[which(wtResCont[, "fourweeksVsP10"] < 0)]
+hits3 <- rownames(prDat)[which(wtResCont[, "fourweeksVsP10"] > 0)]
+
+pDat_hits1 <- prepareData(hits1)
+wtpDat_hits1 <- subset(pDat_hits1,gType=="wt")
+makeStripplot(wtpDat_hits1,group=NULL)
+
+pDat_hits2 <- prepareData(hits2[1:4])
+wtpDat_hits2 <- subset(pDat_hits2,gType=="wt")
+makeStripplot(wtpDat_hits2,group=NULL)
+
+pDat_hits3 <- prepareData(hits3[1:4])
+wtpDat_hits3 <- subset(pDat_hits3,gType=="wt")
+makeStripplot(wtpDat_hits3,group=NULL)
+
+intersect(hits1,hits2)
+intersect(hits1,hits3)
+intersect(hits2,hits3)
+```
+
+Repeat with less stringent cut-off.
+```{r}
+cutoff <- 0.01
+nhits <- 8
+wtResCont <- decideTests(wtEbFitCont, p.value = cutoff, method = "global")
+summary(wtResCont)
+vennDiagram(wtResCont)
+
+hits1 <- rownames(prDat)[which(wtResCont[, "P10VsP6"] < 0)]
+hits2 <- rownames(prDat)[which(wtResCont[, "fourweeksVsP10"] < 0)]
+hits3 <- rownames(prDat)[which(wtResCont[, "P10VsP6"] > 0)]
+hits4 <- rownames(prDat)[which(wtResCont[, "fourweeksVsP10"] > 0)]
+hits5 <- rownames(prDat)[which(wtResCont[, "P10VsP6"] != 0 & wtResCont[, "fourweeksVsP10"] != 0)]
+hits6 <- rownames(prDat)[which(wtResCont[, "P10VsP6"] > 0 & wtResCont[, "fourweeksVsP10"] < 0)]
+
+pDat_hits1 <- prepareData(hits1[1:nhits])
+wtpDat_hits1 <- subset(pDat_hits1,gType=="wt")
+makeStripplot(wtpDat_hits1,group=NULL)
+
+pDat_hits2 <- prepareData(hits2[1:nhits])
+wtpDat_hits2 <- subset(pDat_hits2,gType=="wt")
+makeStripplot(wtpDat_hits2,group=NULL)
+
+pDat_hits3 <- prepareData(hits3[1:nhits])
+wtpDat_hits3 <- subset(pDat_hits3,gType=="wt")
+makeStripplot(wtpDat_hits3,group=NULL)
+
+pDat_hits4 <- prepareData(hits4[1:nhits])
+wtpDat_hits4 <- subset(pDat_hits4,gType=="wt")
+makeStripplot(wtpDat_hits4,group=NULL)
+
+pDat_hits5 <- prepareData(hits5)
+wtpDat_hits5 <- subset(pDat_hits5,gType=="wt")
+makeStripplot(wtpDat_hits5,group=NULL)
+
+pDat_hits6 <- prepareData(hits6)
+wtpDat_hits6 <- subset(pDat_hits6,gType=="wt")
+makeStripplot(wtpDat_hits6,group=NULL)
+```
+
+### Take-home exercise: See if you can find one or more probes that have some expression changes up to P6 and then hold steady all the way to 4_weeks.
+
+Set up contrasts.
+```{r}
+cont.matrix <- makeContrasts(P2VsE16 = devStageP2 - Intercept, P6VsP2 = devStageP6 - devStageP2, P10VsP6 = devStageP10 - devStageP6, fourweeksVsP10 = devStage4_weeks - devStageP10, levels = wtDesMat)
+wtFitCont <- contrasts.fit(wtFit, cont.matrix)
+wtEbFitCont <- eBayes(wtFitCont)
+contTab <- topTable(wtEbFitCont)
+contTab
+```
+
+Try with the more stringent cut-off, since I reckon a lot of probes will meet the criterea (more change expected at beginning, as demonstrated in Venn diagram below).
+```{r}
+cutoff <- 1e-04
+wtResCont <- decideTests(wtEbFitCont, p.value = cutoff, method = "global")
+summary(wtResCont)
+vennDiagram(wtResCont)
+```
+Looks like most of the change is going on between E16 and P2 (this makes sense).
+
+Find probes that meet the conditions - changes at both points before P6 but not after P6.
+```{r}
+hits <- rownames(prDat)[which(wtResCont[, "P2VsE16"] != 0 & wtResCont[, "P6VsP2"] != 0 & wtResCont[, "P10VsP6"] == 0 & wtResCont[, "fourweeksVsP10"] == 0)]
+
+pDat_hits <- prepareData(hits[1:nhits])
+wtpDat_hits <- subset(pDat_hits,gType=="wt")
+makeStripplot(wtpDat_hits,group=NULL)
+```

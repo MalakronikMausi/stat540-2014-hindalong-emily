@@ -1,4 +1,4 @@
-library(edgeR)
+library(VennDiagram)
 
 # Prep
 
@@ -11,8 +11,9 @@ table(des$strain)
 
 group <- factor(c(rep("1", 10), rep("2", 11)))
 
-# Analysis
+# GLM edgeR
 
+library(edgeR)
 dge.glm <- DGEList(counts = dat, group = group)
 str(dge.glm)
 design <- model.matrix(~group)
@@ -104,7 +105,7 @@ tags.glm <- rownames(dge.glm.tag.disp)[as.logical(de.glm)]
 plotSmear(lrt, de.tags = tags.glm)
 abline(h = c(-2, 2), col = "blue")
 
-# Part 2
+# DESeq
 
 library(DESeq)
 deSeqDat <- newCountDataSet(dat, group)
@@ -114,6 +115,7 @@ deSeqDat <- estimateSizeFactors(deSeqDat)
 sizeFactors(deSeqDat)
 
 deSeqDat <- estimateDispersions(deSeqDat)
+
 # plotting the estimated dispersions against the mean normalized counts
 plotDispEsts(deSeqDat)
 
@@ -121,6 +123,8 @@ results <- nbinomTest(deSeqDat, levels(group)[1], levels(group)[2])
 str(results)
 
 plotMA(results)
+
+# Voom & limma
 
 library(limma)
 norm.factor <- calcNormFactors(dat)
@@ -131,5 +135,19 @@ dat.voomed
 fit <- lmFit(dat.voomed, design)
 fit <- eBayes(fit)
 topTable(fit)
+
 # Take Home Problem
 
+# Redo voom + limma analysis, specifying the appropriate coef
+voomlim <- topTable(fit,coef=2,number=Inf)
+
+# Get results at threshold
+thresh <- 1e-10
+edgeR_res <- rownames(tt.glm$table[tt.glm$table$FDR < thresh, ])
+DEseq_res <- na.omit(results[results$padj < thresh, ])$id
+voomlim_res <- rownames(voomlim[voomlim$adj.P.Val < thresh, ])
+
+all_genes <- list(EdgeR=edgeR_res,DESeq=DEseq_res,VoomLim=voomlim_res)
+plot.new()
+venn_plot <- venn.diagram(all_genes, filename = NULL, fill = c("red", "blue","green"), force.unique=TRUE,ext.text=FALSE,cat.cex=1.5)
+grid.draw(venn_plot)
