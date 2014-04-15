@@ -1,0 +1,53 @@
+Seminar 8
+========================================================
+
+### Libraries
+```{r}
+asource("http://bioconductor.org/biocLite.R")
+biocLite("GEOquery")
+biocLite("wateRmelon")
+biocLite("IlluminaHumanMethylation450k.db")
+
+library(GEOquery)
+library(wateRmelon)
+library(IlluminaHumanMethylation450k.db)
+```
+
+### Explore 450k methylation array data
+```{r}
+if (file.exists("methyl_ALL.Rdata")) {
+    # if previously downloaded
+    load("methyl_ALL.Rdata")
+} else {
+    # if downloading for the first time
+    GSE39141 <- getGEO("GSE39141")
+    show(GSE39141)  ## 33 samples (29 ALL and 4 healthy B cells)
+    GSE42865 <- getGEO("GSE42865")  # took ~2 mins for JB
+    show(GSE42865)  ## 16 samples (9 healthy cells B cells and 7 other cells)
+
+    # Extract expression matrices (turn into data frames at once)
+    ALL.dat <- as.data.frame(exprs(GSE39141[[1]]))
+    CTRL.dat <- as.data.frame(exprs(GSE42865[[1]]))
+
+    # Obtain the meta-data for the samples and rename them perhaps?
+    ALL.meta <- pData(phenoData(GSE39141[[1]]))
+    CTRL.meta <- pData(phenoData(GSE42865[[1]]))
+
+    # create some labels
+    ALL.meta$Group <- c(rep("ALL", 29), rep("HBC", 4))
+    ## ALL: Case; HBC: Healthy B Cells
+
+    # Subset both meta-data and data for control (healthy) donors
+    CTRL.meta <- droplevels(subset(CTRL.meta, grepl("Healthy donor", characteristics_ch1.1)))
+    CTRL.dat <- subset(CTRL.dat, select = as.character(CTRL.meta$geo_accession))
+
+    # Rename variables
+    names(ALL.dat) <- paste(ALL.meta$Group, gsub("GSM", "", names(ALL.dat)), 
+        sep = "_")
+    names(CTRL.dat) <- paste("HBC", gsub("GSM", "", names(CTRL.dat)), sep = "_")
+
+    # save the data to avoid future re-downloading
+    save(ALL.dat, CTRL.dat, ALL.meta, CTRL.meta, file = "methyl_ALL.Rdata")
+}
+
+```

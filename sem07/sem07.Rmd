@@ -13,7 +13,6 @@ library(VennDiagram)
 ### Prep Work
 
 ```{r}
-getwd()
 dat <- read.table("bottomly_count_table.tsv", header = TRUE, 
                   row.names = 1)
 des <- read.table("bottomly_phenodata.tsv", header = TRUE, 
